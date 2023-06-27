@@ -1,0 +1,226 @@
+
+
+---
+title: "NYPD Shooting Incident Report"
+# author: "Stepan Arakelian"
+date: "6/21/2023"
+output: pdf_document
+---
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+## Step 0: Import Library
+
+
+```{r library, message=FALSE, warning=FALSE}
+library(tidyverse)
+library(lubridate)
+```
+
+
+## Step 1: Load Data
+
+
+* `read_csv()` reads comma delimited files, read_csv2() reads semicolon separated files (common in countries where , is used as the decimal place), read_tsv() reads tab delimited files, and read_delim() reads in files with any delimiter.
+
+
+```{r load, echo=FALSE}
+df = read_csv("https://data.cityofnewyork.us/api/views/833y-fsy8/rows.csv?accessType=DOWNLOAD")
+head(df)
+```
+
+
+## Step 2: Tidy and Transform Data
+
+
+Let's first eliminate the columns I do not need for this assignment, which are: **PRECINCT**,**JURISDICTION_CODE**,**LOCATION_DESC**, **X_COORD_CD**, **Y_COORD_CD**, and **Lon_Lat**.
+
+
+```{r, echo=FALSE}
+df_2 <- df %>% select(INCIDENT_KEY,
+                  OCCUR_DATE,
+                  OCCUR_TIME,
+                  BORO,
+                  STATISTICAL_MURDER_FLAG,
+                  PERP_AGE_GROUP,
+                  PERP_SEX,
+                  PERP_RACE,
+                  VIC_AGE_GROUP,
+                  VIC_SEX,
+                  VIC_RACE,
+                  Latitude,
+                  Longitude)
+
+
+# Return the column name along with the missing values
+lapply(df_2, function(x) sum(is.na(x)))
+```
+
+
+Understanding the reasons why data are missing is important for handling the remaining data correctly. There's a fair amount of unidentifiable data on perpetrators (age, race, or sex.) Those cases are possibly still active and ongoing investigation. In fear of missing meaningful information, I handle this group of missing data by calling them as another group of "Unknown".
+
+
+Key observations on data type conversion are:
+
+
+* **INCIDENT_KEY** should be treated as a string.
+* **BORO** should be treated as a factor.
+* **PERP_AGE_GROUP** should be treated as a factor.
+* **PERP_SEX** should be treated as a factor.
+* **PERP_RACE** should be treated as a factor.
+* **VIC_AGE_GROUP** should be treated as a factor.
+* **VIC_SEX** should be treated as a factor.
+* **VIC_RACE** should be treated as a factor.
+
+
+```{r, echo=FALSE}
+# Tidy and transform data
+df_2 = df_2 %>%
+ replace_na(list(PERP_AGE_GROUP = "Unknown", PERP_SEX = "Unknown", PERP_RACE = "Unknown")) # nolint
+
+
+# Remove extreme values in data
+df_2 <- subset(df_2, PERP_AGE_GROUP!="1020" & PERP_AGE_GROUP!="224" & PERP_AGE_GROUP!="940")
+
+
+df_2$PERP_AGE_GROUP = recode(df_2$PERP_AGE_GROUP, UNKNOWN = "Unknown")
+df_2$PERP_SEX = recode(df_2$PERP_SEX, U = "Unknown")
+df_2$PERP_RACE = recode(df_2$PERP_RACE, UNKNOWN = "Unknown")
+df_2$VIC_SEX   = recode(df_2$VIC_SEX, U = "Unknown")
+df_2$VIC_RACE   = recode(df_2$VIC_RACE, UNKNOWN = "Unknown")
+df_2$INCIDENT_KEY = as.character(df_2$INCIDENT_KEY)
+df_2$BORO = as.factor(df_2$BORO)
+df_2$PERP_AGE_GROUP = as.factor(df_2$PERP_AGE_GROUP)
+df_2$PERP_SEX = as.factor(df_2$PERP_SEX)
+df_2$PERP_RACE = as.factor(df_2$PERP_RACE)
+df_2$VIC_AGE_GROUP = as.factor(df_2$VIC_AGE_GROUP)
+df_2$VIC_SEX = as.factor(df_2$VIC_SEX)
+df_2$VIC_RACE = as.factor(df_2$VIC_RACE)
+
+
+# Return summary statistics
+summary(df_2)
+```
+```{r, echo=FALSE}
+df_2 <- df_2 %>% mutate(hour = hour(OCCUR_TIME))
+```
+
+
+
+
+## Step 3: Add Visualizations and Analysis
+
+
+**Research Question**
+
+
+1. Which part of New York has the most number of incidents? Of those incidents, how many are murder cases?
+
+
+Brooklyn is the 1st in terms of the number of incidents, followed by Bronx and Queens respectively. Likewise, the number of murder cases follows the same pattern as that of incidents.
+
+
+```{r, echo=FALSE}
+g <- ggplot(df_2, aes(x = BORO, fill=BORO)) +
+ geom_bar() +
+ labs(title = "Boroughs of New York City",
+      x = "Boroughs of New York City",
+      y = "Count of Incidents") +
+ theme_minimal()
+g
+```
+
+
+```{r, echo=FALSE}
+table(df_2$BORO, df_2$STATISTICAL_MURDER_FLAG)
+```
+2. Which day and time should people in New York be cautious of falling into victims of crime?
+
+
+* Weekends in NYC have the most chances of incidents. Be cautious!
+* Incidents historically happen in the evening and night time. If there's nothing urgent, recommend people staying at home!
+
+
+```{r, echo=FALSE}
+df_2$OCCUR_DAY = mdy(df_2$OCCUR_DATE)
+df_2$OCCUR_DAY = wday(df_2$OCCUR_DAY, label = TRUE)
+df_2$OCCUR_HOUR = hour(hms(as.character(df_2$OCCUR_TIME)))
+
+
+df_3 = df_2 %>%
+ group_by(OCCUR_DAY) %>%
+ count()
+
+
+df_4 = df_2 %>%
+ group_by(OCCUR_HOUR) %>%
+ count()
+```
+```{R, echo=FALSE}
+# mod visual
+ggplot(df_2, aes(x = BORO, y = hour, color = BORO)) +
+ geom_line(aes(OCCUR_TIME, hour)) +
+ geom_point(aes(OCCUR_TIME, hour)) +
+ scale_color_manual(values = c("red", "blue", "green", "orange", "purple")) +
+ theme_minimal() +
+ labs(title = "Number of Incidents by Borough", x = "Borough", y = "Number of Incidents", color = "Borough")
+```
+```{r, echo=FALSE}
+g <- ggplot(df_3, aes(x = OCCUR_DAY, y = n, fill = OCCUR_DAY)) +
+ geom_col() +
+ labs(title = "Which day should people in New York be cautious of incidents?",
+      x = "Incident Occurence Day",
+      y = "Count of Incidents") +
+ theme_minimal() +
+ scale_fill_manual(values = c("red", "blue", "green", "orange", "purple", "yellow", "brown"))+
+   theme(axis.text.x = element_text(angle = 90, hjust = 1))
+g
+```
+```{r, echo=FALSE}
+g <- ggplot(df_4, aes(x = OCCUR_HOUR, y = n, color="Incidents")) +
+ geom_line() +
+ labs(title = "Which time should people in New York be cautious of incidents?",
+      x = "Incident Occurence Hour",
+      y = "Count of Incidents") +
+ theme_minimal()+ scale_color_manual(values = c("red", "blue", "green", "yellow", "orange", "purple"))
+g
+```
+
+
+3. The Profile of Perpetrators and Victims
+
+
+* There's a striking number of incidents in the age group of 25-44 and 18-24.
+* Black and White Hispanic stood out in the number of incidents in  Boroughs of New York City.
+* There are significantly more incidents with Male than those of Female.
+
+
+```{r, echo=FALSE}
+table(df_2$PERP_AGE_GROUP, df_2$VIC_AGE_GROUP)
+```
+```{r, echo=FALSE}
+table(df_2$PERP_SEX, df_2$VIC_SEX)
+```
+```{r, echo=FALSE}
+table(df_2$PERP_RACE, df_2$VIC_RACE)
+```
+```{r, echo=FALSE}
+mod <- lm(hour ~ BORO, data = cleaned_set)
+```
+
+
+Section 4 involves building a logistic regression model to predict whether an incident is a murder case or not. Logistic regression is a classification technique that estimates the probability of a murder case belonging to a specific profile, location, or date and time. The output of the model includes coefficients, standard errors, z-statistics, and p-values. The variables PERP_SEX Unknown, PERP_AGE_GROUP 45-64, PER_AGE_GROUP 65+, PER_AGE_GROUP Unknown, PERP_AGE_GROUP 25-44, latitude, and longitude are statistically significant. The logistic regression coefficients indicate the change in the log odds of the outcome for a one-unit increase in the predictor variable. For example, a person in the age group of 65+ has a 1.03 increase in the log odds of murder compared to a person whose age is less than 18.
+
+
+```{r, echo=FALSE}
+# Logistics Regression
+glm.fit <- glm(STATISTICAL_MURDER_FLAG ~ PERP_RACE + PERP_SEX + PERP_AGE_GROUP + OCCUR_HOUR + OCCUR_DAY + Latitude + Longitude, data = df_2, family = binomial)
+summary(glm.fit)
+```
+## Step 4: Identify Bias
+
+
+This topic can lead to discrimination and hidden bias among individuals. If I rely solely on my knowledge and the stories of my friends living near New York, I could assume that the Bronx has the largest number of incidents and that incidents occur more often with women than with men. However, it is important to confirm these assumptions with data in order to make an informed decision. It is interesting to note that the largest number of incidents were registered in Brooklyn, followed by the Bronx and Queens. The number of homicide cases follows the same pattern as the incidents themselves. In addition, there are significantly more incidents involving men than women. It is best to test and confirm assumptions based on data, rather than relying solely on personal experience, which may be biased against a particular group or population. These findings are consistent with a CNN report on a spike in hate crimes and shooting incidents in New York City since last year, with the number of shooting incidents increasing by 73% in May 2021 compared to May 2020.
+
